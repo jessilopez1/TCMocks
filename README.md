@@ -1,6 +1,6 @@
 ## HR Mock Interview — Live Conductor
 
-**File:** `hr_mock_conductor.html`
+**Link [here](https://jessilopez1.github.io/TCMocks/hr_mock_conductor.html)** 
 
 A browser-based tool for conducting HR Mock Interview sessions. No installation required — open the file in any browser.
 
