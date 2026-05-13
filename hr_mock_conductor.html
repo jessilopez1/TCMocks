@@ -411,7 +411,11 @@ function doPost(e){<br>
         <button class="btn-primary" onclick="exportToSheets()">Send to Google Sheets</button>
         <button class="btn-secondary" onclick="exportJSON()">Download JSON backup</button>
       </div>
-      <div id="exportStatus" style="margin-top:12px;font-size:13px;color:var(--teal);display:none">✓ Session saved to Google Sheets</div>
+      <div id="exportStatus" style="margin-top:12px;font-size:13px;color:var(--teal);display:none"></div>
+      <div style="margin-top:12px;padding:10px 14px;background:var(--gray-50);border:1px solid var(--gray-200);border-radius:8px;font-size:12px;color:var(--gray-400);display:flex;align-items:center;gap:8px;">
+        <span>🔄 Auto-save:</span>
+        <span id="autosaveStatus">will start when a URL is entered and coach name is set</span>
+      </div>
     </div>
   </div>
 
@@ -941,7 +945,50 @@ function exportJSON(){
 }
 
 function copyScript(){
-  const script=`function doPost(e){\n  var data=JSON.parse(e.postData.contents);\n  var ss=SpreadsheetApp.getActiveSpreadsheet();\n  var tabName=data.coach||'Unknown coach';\n  var sheet=ss.getSheetByName(tabName);\n  if(!sheet){\n    sheet=ss.insertSheet(tabName);\n    sheet.appendRow(["Date","Candidate","Programme","Role","Company","Score","Readiness","Feedback","Notes"]);\n  }\n  sheet.appendRow([data.date,data.name,data.programme,data.role,data.company,data.score,data.readiness,data.feedback,data.notes]);\n  return ContentService.createTextOutput("ok");\n}`;
+  const script=`function doPost(e){
+  var data=JSON.parse(e.postData.contents);
+  var ss=SpreadsheetApp.getActiveSpreadsheet();
+  var tabName=data.coach||'Unknown coach';
+  var sheet=ss.getSheetByName(tabName);
+  if(!sheet){
+    sheet=ss.insertSheet(tabName);
+    var headers=["Date","Candidate","Programme","Role","Company","Score","Readiness","Feedback","Notes"];
+    sheet.appendRow(headers);
+    // Format header row
+    var headerRange=sheet.getRange(1,1,1,headers.length);
+    headerRange.setBackground('#1F3864');
+    headerRange.setFontColor('#FFFFFF');
+    headerRange.setFontWeight('bold');
+    headerRange.setFontSize(11);
+    // Freeze header row
+    sheet.setFrozenRows(1);
+    // Set column widths
+    sheet.setColumnWidth(1,100);  // Date
+    sheet.setColumnWidth(2,150);  // Candidate
+    sheet.setColumnWidth(3,160);  // Programme
+    sheet.setColumnWidth(4,180);  // Role
+    sheet.setColumnWidth(5,150);  // Company
+    sheet.setColumnWidth(6,70);   // Score
+    sheet.setColumnWidth(7,180);  // Readiness
+    sheet.setColumnWidth(8,400);  // Feedback
+    sheet.setColumnWidth(9,300);  // Notes
+  }
+  var newRow=sheet.appendRow([data.date,data.name,data.programme,data.role,data.company,data.score,data.readiness,data.feedback,data.notes]);
+  // Alternate row shading
+  var lastRow=sheet.getLastRow();
+  var rowRange=sheet.getRange(lastRow,1,1,9);
+  if(lastRow%2===0){
+    rowRange.setBackground('#D6E4F0');
+  } else {
+    rowRange.setBackground('#FFFFFF');
+  }
+  // Wrap text in feedback and notes columns
+  sheet.getRange(lastRow,8).setWrap(true);
+  sheet.getRange(lastRow,9).setWrap(true);
+  // Vertical align all cells to top
+  rowRange.setVerticalAlignment('top');
+  return ContentService.createTextOutput("ok");
+}`;
   navigator.clipboard.writeText(script).then(()=>{
     const el=event.target.closest('.code-block');
     const orig=el.innerHTML;
@@ -949,6 +996,25 @@ function copyScript(){
     setTimeout(()=>el.innerHTML=orig,2000);
   });
 }
+
+// ── Auto-save ─────────────────────────────────────────────────────────────────
+function autoSave(){
+  const url=document.getElementById('sheetsUrl').value.trim();
+  const coach=state.setup.coach.trim();
+  if(!url||!coach) return;
+  const data=getSessionData();
+  fetch(url,{method:'POST',body:JSON.stringify(data),mode:'no-cors',redirect:'follow'})
+    .then(()=>{
+      const now=new Date();
+      const t=now.getHours().toString().padStart(2,'0')+':'+now.getMinutes().toString().padStart(2,'0');
+      document.getElementById('autosaveStatus').textContent='last auto-saved at '+t;
+    })
+    .catch(()=>{
+      document.getElementById('autosaveStatus').textContent='auto-save failed — check URL in Export tab';
+    });
+}
+// Auto-save every 5 minutes
+setInterval(autoSave, 5*60*1000);
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 buildRubricPanel();
