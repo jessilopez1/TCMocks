@@ -916,9 +916,19 @@ function exportToSheets(){
   if(!url){alert('Please enter your Google Apps Script URL first.');return;}
   if(!state.setup.coach.trim()){alert('Please enter your name in the Setup tab first — this determines which tab your records go to.');return;}
   const data=getSessionData();
-  fetch(url,{method:'POST',body:JSON.stringify(data)})
-    .then(()=>{ document.getElementById('exportStatus').style.display='block'; })
-    .catch(()=>alert('Could not reach the URL. Check the deployment and try again.'));
+  const status=document.getElementById('exportStatus');
+  status.style.display='none';
+  // Use no-cors to avoid CORS block from GitHub Pages — Apps Script still receives and processes the data
+  fetch(url,{method:'POST',body:JSON.stringify(data),mode:'no-cors',redirect:'follow'})
+    .then(()=>{
+      status.textContent='✓ Session sent to Google Sheets — check your sheet to confirm it arrived';
+      status.style.display='block';
+    })
+    .catch(()=>{
+      status.textContent='✗ Could not reach the URL. Check the deployment and try again.';
+      status.style.color='#dc2626';
+      status.style.display='block';
+    });
 }
 
 function exportJSON(){
