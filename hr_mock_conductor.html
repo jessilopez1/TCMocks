@@ -405,17 +405,13 @@ function doPost(e){<br>
       <div class="card-title">Google Sheets URL</div>
       <div class="field" style="margin-bottom:16px">
         <label>Your Apps Script deployment URL</label>
-        <input type="text" id="sheetsUrl" placeholder="https://script.google.com/macros/s/…/exec">
+        <input type="text" id="sheetsUrl" value="https://script.google.com/macros/s/AKfycbys5akrsKkps-O2BhyB1iXzvGmJQewqp1BvIhHR-LqsQPHjdiA-ALY__pte8273areZBA/exec">
       </div>
       <div style="display:flex;gap:10px;flex-wrap:wrap">
         <button class="btn-primary" onclick="exportToSheets()">Send to Google Sheets</button>
         <button class="btn-secondary" onclick="exportJSON()">Download JSON backup</button>
       </div>
       <div id="exportStatus" style="margin-top:12px;font-size:13px;color:var(--teal);display:none"></div>
-      <div style="margin-top:12px;padding:10px 14px;background:var(--gray-50);border:1px solid var(--gray-200);border-radius:8px;font-size:12px;color:var(--gray-400);display:flex;align-items:center;gap:8px;">
-        <span>🔄 Auto-save:</span>
-        <span id="autosaveStatus">will start when a URL is entered and coach name is set</span>
-      </div>
     </div>
   </div>
 
@@ -570,7 +566,7 @@ const SPECIAL_CASE_TIPS = {
   },
   'junior': {
     label:'Junior / no work experience',
-    tips:['Accept project, volunteer, internship, or academic experience as equivalent','Reduce emphasis on career narrative length — focus on motivation, curiosity, learning agility','The capstone project is likely their strongest STAR example — coach it to be fully developed','Watch for self-deprecating framing ("I don\'t have much experience but…") — address directly']
+    tips:['Accept project, volunteer, internship, or academic experience as equivalent','Reduce emphasis on career narrative length — focus on motivation, curiosity, learning agility','The capstone project is likely their strongest STAR example — coach it to be fully developed','Watch for self-deprecating framing ("I don\'t have much experience but…") — address directly','Proactive programme disclosure: coach them to volunteer programme details unprompted — the programme name, practical tasks completed, and the selective process to join. This is their credibility signal when work history is thin. They should not wait to be asked.']
   },
   'non-native': {
     label:'Non-native English speaker',
@@ -922,11 +918,12 @@ function exportToSheets(){
   const data=getSessionData();
   const status=document.getElementById('exportStatus');
   status.style.display='none';
-  // Use no-cors to avoid CORS block from GitHub Pages — Apps Script still receives and processes the data
   fetch(url,{method:'POST',body:JSON.stringify(data),mode:'no-cors',redirect:'follow'})
     .then(()=>{
       status.textContent='✓ Session sent to Google Sheets — check your sheet to confirm it arrived';
+      status.style.color='var(--teal)';
       status.style.display='block';
+      sessionExported = true;
     })
     .catch(()=>{
       status.textContent='✗ Could not reach the URL. Check the deployment and try again.';
@@ -997,29 +994,134 @@ function copyScript(){
   });
 }
 
-// ── Auto-save ─────────────────────────────────────────────────────────────────
-function autoSave(){
-  const url=document.getElementById('sheetsUrl').value.trim();
-  const coach=state.setup.coach.trim();
-  if(!url||!coach) return;
-  const data=getSessionData();
-  fetch(url,{method:'POST',body:JSON.stringify(data),mode:'no-cors',redirect:'follow'})
-    .then(()=>{
-      const now=new Date();
-      const t=now.getHours().toString().padStart(2,'0')+':'+now.getMinutes().toString().padStart(2,'0');
-      document.getElementById('autosaveStatus').textContent='last auto-saved at '+t;
-    })
-    .catch(()=>{
-      document.getElementById('autosaveStatus').textContent='auto-save failed — check URL in Export tab';
-    });
+// ── Close warning ─────────────────────────────────────────────────────────────
+let sessionExported = false;
+
+window.addEventListener('beforeunload', function(e){
+  const coach = state.setup.coach.trim();
+  const candidate = state.setup.name.trim();
+  if(!coach || !candidate) return;
+  if(!sessionExported){
+    e.preventDefault();
+    e.returnValue = '';
+  }
+});
+
+// ── Local storage — session backup ────────────────────────────────────────────
+const LS_KEY = 'hr_mock_session_backup';
+
+function localSave(){
+  const coach = state.setup.coach.trim();
+  const candidate = state.setup.name.trim();
+  if(!coach || !candidate) return;
+  const snapshot = {
+    ts: Date.now(),
+    setup: state.setup,
+    phases: state.phases,
+    rubric: state.rubric,
+    checklist: state.checklist,
+    feedback: state.feedback,
+  };
+  try { localStorage.setItem(LS_KEY, JSON.stringify(snapshot)); } catch(e){}
 }
-// Auto-save every 5 minutes
-setInterval(autoSave, 5*60*1000);
+
+function localClear(){
+  try { localStorage.removeItem(LS_KEY); } catch(e){}
+}
+
+function localRestore(snapshot){
+  // Restore state
+  state.setup = snapshot.setup;
+  state.phases = snapshot.phases;
+  state.rubric = snapshot.rubric;
+  state.checklist = snapshot.checklist;
+  state.feedback = snapshot.feedback;
+
+  // Restore setup fields
+  const s = state.setup;
+  if(document.getElementById('s-coach')) document.getElementById('s-coach').value = s.coach||'';
+  if(document.getElementById('s-name')) document.getElementById('s-name').value = s.name||'';
+  if(document.getElementById('s-programme')) document.getElementById('s-programme').value = s.programme||'';
+  if(document.getElementById('s-role')) document.getElementById('s-role').value = s.role||'';
+  if(document.getElementById('s-company')) document.getElementById('s-company').value = s.company||'';
+  if(document.getElementById('s-posting')) document.getElementById('s-posting').value = s.posting||'';
+
+  // Restore special case pills
+  if(s.specials && s.specials.length){
+    document.querySelectorAll('.pill').forEach(p => {
+      const key = p.getAttribute('onclick').match(/'([^']+)'\)/)[1];
+      if(s.specials.includes(key)) p.classList.add('active');
+    });
+    if(s.specials.includes('repeat'))
+      document.getElementById('specialNotesField').style.display='flex';
+  }
+
+  // Rebuild panels with restored data then restore sub-states
+  startSession();
+
+  // Restore phase notes
+  Object.entries(state.phases).forEach(([i,p])=>{
+    const el = document.getElementById(`pnotes-${i}`);
+    if(el && p.notes) el.value = p.notes;
+  });
+
+  // Restore rubric scores
+  Object.entries(state.rubric).forEach(([id,score])=>{
+    scoreItem(id, score);
+  });
+
+  // Restore checklist
+  Object.entries(state.checklist).forEach(([id,checked])=>{
+    if(checked){
+      state.checklist[id] = false;
+      toggleCheck(id);
+    }
+  });
+
+  // Restore feedback fields
+  Object.entries(state.feedback).forEach(([id,val])=>{
+    const el = document.getElementById(id);
+    if(el) el.value = val;
+  });
+  renderFeedbackOutput();
+
+  showPanel('interview');
+}
+
+function checkForBackup(){
+  let snapshot;
+  try { snapshot = JSON.parse(localStorage.getItem(LS_KEY)); } catch(e){ return; }
+  if(!snapshot || !snapshot.setup || !snapshot.setup.coach || !snapshot.setup.name) return;
+
+  const age = Math.round((Date.now() - snapshot.ts) / 60000);
+  const ageText = age < 60 ? `${age} minute${age===1?'':'s'} ago` : `${Math.round(age/60)} hour${Math.round(age/60)===1?'':'s'} ago`;
+
+  const banner = document.createElement('div');
+  banner.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:9999;background:#1F3864;color:white;padding:14px 24px;display:flex;align-items:center;justify-content:space-between;gap:16px;font-family:var(--sans);font-size:14px;box-shadow:0 2px 12px rgba(0,0,0,0.3)';
+  banner.innerHTML = `
+    <span>🔄 <strong>Unsaved session found</strong> — ${snapshot.setup.coach} / ${snapshot.setup.name} (saved ${ageText}). Restore it?</span>
+    <div style="display:flex;gap:10px;flex-shrink:0">
+      <button onclick="localRestore(${JSON.stringify(snapshot).replace(/"/g,'&quot;')});this.closest('div[style]').remove()" style="padding:7px 16px;background:white;color:#1F3864;border:none;border-radius:6px;font-weight:600;cursor:pointer">Restore session</button>
+      <button onclick="localClear();this.closest('div[style]').remove()" style="padding:7px 16px;background:rgba(255,255,255,0.15);color:white;border:1px solid rgba(255,255,255,0.3);border-radius:6px;cursor:pointer">Discard</button>
+    </div>`;
+  document.body.prepend(banner);
+}
+
+// Save to localStorage every 30 seconds if session is active
+setInterval(localSave, 30*1000);
+
+// Clear local backup when export succeeds
+const _origExport = exportToSheets;
+exportToSheets = function(){
+  _origExport();
+  setTimeout(localClear, 3000);
+};
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 buildRubricPanel();
 buildChecklistPanel();
 buildFeedbackPanel();
+checkForBackup();
 </script>
 </body>
 </html>
