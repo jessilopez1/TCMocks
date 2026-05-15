@@ -616,6 +616,7 @@ function showPanel(id){
   document.querySelectorAll('.nav-tab').forEach(t=>t.classList.remove('active'));
   document.getElementById('panel-'+id).classList.add('active');
   document.getElementById('tab-'+id).classList.add('active');
+  if(id==='interview' && !document.getElementById('phaseBar').children.length) buildInterviewPanel();
   if(id==='rubric') renderRubricSummary();
   if(id==='debrief') renderDebrief();
   if(id==='feedback') renderFeedbackOutput();
@@ -748,6 +749,8 @@ function savePhaseNotes(i){
 }
 
 // ══ RUBRIC ════════════════════════════════════════════════════════════════════
+const RED_LIGHT='#fee2e2';
+
 function buildRubricPanel(){
   const grid=document.getElementById('rubricGrid');
   grid.innerHTML=RUBRIC_ITEMS.map(item=>`
@@ -793,8 +796,6 @@ function renderRubricSummary(){
     </div>
     <div class="readiness-band" style="background:${bfill};color:#1e2535;border:1px solid rgba(0,0,0,0.06)">${band}</div>`;
 }
-
-const RED_LIGHT='#fee2e2';
 
 // ══ CHECKLIST ════════════════════════════════════════════════════════════════
 function buildChecklistPanel(){
@@ -911,7 +912,7 @@ function getSessionData(){
   };
 }
 
-function exportToSheets(){
+let exportToSheets = function(){
   const url=document.getElementById('sheetsUrl').value.trim();
   if(!url){alert('Please enter your Google Apps Script URL first.');return;}
   if(!state.setup.coach.trim()){alert('Please enter your name in the Setup tab first — this determines which tab your records go to.');return;}
